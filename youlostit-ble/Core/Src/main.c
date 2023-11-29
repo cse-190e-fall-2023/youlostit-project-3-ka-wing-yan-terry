@@ -20,11 +20,76 @@
 /* Includes ------------------------------------------------------------------*/
 //#include "ble_commands.h"
 #include "ble.h"
+#include <string.h>
 
 #include <stdlib.h>
+#include <stdint.h>
 
+/* Include memory map of our MCU */
+#include <stm32l475xx.h>
+
+#include "stdio.h"
+#include "leds.h"
+#include "timer.h"
+#include "lsm6dsl.h"
+#include "i2c.h"
 int dataAvailable = 0;
+// Define maximum number of time intervals since last movement before entering lost state
+// 50 * MAX_COUNT_INTERVAL = 60000 ms
+#define MAX_COUNT_INTERVAL 200
 
+// Redefine the libc _write() function so you can use printf in your code
+int _write(int file, char *ptr, int len) {
+	int i = 0;
+	for (i = 0; i < len; i++) {
+		ITM_SendChar(*ptr++);
+	}
+	return len;
+}
+const uint8_t preamble = 0b10011001;  // Preamble
+const uint16_t pid = 0b0001110111111100; // SID: 7676
+volatile uint32_t ptr1 = 4; // 4 pairs of bits in preamble
+volatile uint32_t ptr2 = 8; // 8 pairs of bits in pid
+volatile uint32_t stationary_interval_count = 0; // Count number of time intervals since last movement
+
+void TIM2_IRQHandler(){
+	if((TIM2->SR & TIM_SR_UIF) == 1){
+		timer_reset(TIM2); // Reset the timer's counter
+		TIM2->SR &= !TIM_SR_UIF; // Clear the update event flag
+		/* To avoid overflow, increase stationary_interval_count only when
+		 * it has not reached its maximum
+		 */
+		if(stationary_interval_count < MAX_COUNT_INTERVAL) {
+			stationary_interval_count+=1;
+		}
+		/* If stationary_interval_count reaches its maximum */
+		if(stationary_interval_count == MAX_COUNT_INTERVAL){
+			if(ptr1 > 0) {
+				ptr1-=1;
+				// Find current pair of bits
+				uint8_t value = (preamble >> (ptr1 * 2)) & 0b11;
+				// Set LEDs
+				leds_set(value);
+			}
+			else {
+				if(ptr2 > 0) {
+					ptr2-=1;
+					// Find current pair of bits
+					uint8_t value = (pid >> (ptr2 * 2)) & 0b11;
+					// Set LEDs
+					leds_set(value);
+					/* If all bits are iterated, reset ptr1 and ptr2 to prepare
+					 * for next iteration
+					 */
+					if(ptr2 == 0) {
+						ptr1 = 4;
+						ptr2 = 8;
+					}
+				}
+			}
+		}
+	}
+}
 SPI_HandleTypeDef hspi3;
 
 void SystemClock_Config(void);
@@ -35,11 +100,24 @@ static void MX_SPI3_Init(void);
   * @brief  The application entry point.
   * @retval int
   */
+int c = 0;
 int main(void)
 {
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
   HAL_Init();
+  //project 2 init
 
+  leds_init();
+  	i2c_init();
+  	lsm6dsl_init();
+  	timer_init(TIM2);
+
+  	timer_set_ms(TIM2, 50); // Set time interval to 50 ms
+
+  	int16_t acceleration_x;
+  	int16_t acceleration_y;
+  	int16_t acceleration_z;
+  	// project 2 init end
   /* Configure the system clock */
   SystemClock_Config();
 
@@ -60,18 +138,44 @@ int main(void)
 
   while (1)
   {
-	  if(!standby && HAL_GPIO_ReadPin(BLE_INT_GPIO_Port,BLE_INT_Pin)){
-	    catchBLE();
-	  }else{
-		  HAL_Delay(1000);
-		  // Send a string to the NORDIC UART service, remember to not include the newline
-		  unsigned char test_str[] = "youlostit BLE test";
-		  updateCharValue(NORDIC_UART_SERVICE_HANDLE, READ_CHAR_HANDLE, 0, sizeof(test_str)-1, test_str);
-	  }
+	  lsm6dsl_read_xyz(&acceleration_x, &acceleration_y, &acceleration_z);
+
+	  		int32_t net_acceleration_squared = acceleration_x * acceleration_x
+	  				+ acceleration_y * acceleration_y + acceleration_z * acceleration_z;
+	  		//stop
+	  		if(net_acceleration_squared >= 113550336 && net_acceleration_squared <= 489736900) {
+//	  			HAL_GPIO_WritePin(BLE_RESET_GPIO_Port,BLE_RESET_Pin,GPIO_PIN_RESET);
+//	  					  			HAL_Delay(10);
+//	  					  			HAL_GPIO_WritePin(BLE_RESET_GPIO_Port,BLE_RESET_Pin,GPIO_PIN_SET);
+	  			c = 0;
+	  		}
+	  		else{
+	  			if(!standby && HAL_GPIO_ReadPin(BLE_INT_GPIO_Port,BLE_INT_Pin)){
+	  						catchBLE();
+	  					  }else{
+	  						  HAL_Delay(1000);
+//	  						  c++;
+//
+//	  						char message[50]; // Adjust the buffer size as needed
+//	  						snprintf(message, sizeof(message), "missing for %d seconds", c);
+//	  						updateCharValue(NORDIC_UART_SERVICE_HANDLE, READ_CHAR_HANDLE, 0, strlen(message), (uint8_t*)message);
+
+//	  						  // Send a string to the NORDIC UART service, remember to not include the newline
+	  						  unsigned char test_str[] = "youlostit BLE test";
+	  						  updateCharValue(NORDIC_UART_SERVICE_HANDLE, READ_CHAR_HANDLE, 0, sizeof(test_str)-1, test_str);
+	  						  timer_reset(TIM2); // Reset timer
+	  						  stationary_interval_count = 0; // Reset stationary_interval_count
+	  						  leds_set(0b00); // Turn off LEDs
+	  					  	  }
+	  		}
+	  		}
+
 	  // Wait for interrupt, only uncomment if low power is needed
 	  //__WFI();
+
   }
-}
+
+
 
 /**
   * @brief System Clock Configuration
