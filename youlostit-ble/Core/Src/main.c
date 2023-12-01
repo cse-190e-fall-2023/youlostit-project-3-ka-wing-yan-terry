@@ -135,7 +135,8 @@ int main(void)
   HAL_Delay(10);
 
   uint8_t standby = 0;
-
+  char dynamicMessage[50]; // Adjust the buffer size as needed
+  int counter = 0;
   while (1)
   {
 	  lsm6dsl_read_xyz(&acceleration_x, &acceleration_y, &acceleration_z);
@@ -147,25 +148,27 @@ int main(void)
 //	  			HAL_GPIO_WritePin(BLE_RESET_GPIO_Port,BLE_RESET_Pin,GPIO_PIN_RESET);
 //	  					  			HAL_Delay(10);
 //	  					  			HAL_GPIO_WritePin(BLE_RESET_GPIO_Port,BLE_RESET_Pin,GPIO_PIN_SET);
-	  			c = 0;
+	  			counter = 0;
 	  		}
 	  		else{
 	  			if(!standby && HAL_GPIO_ReadPin(BLE_INT_GPIO_Port,BLE_INT_Pin)){
 	  						catchBLE();
 	  					  }else{
 	  						  HAL_Delay(1000);
-//	  						  c++;
-//
-//	  						char message[50]; // Adjust the buffer size as needed
-//	  						snprintf(message, sizeof(message), "missing for %d seconds", c);
+
+
+	  						 // Adjust the buffer size as needed
+	  						 snprintf(dynamicMessage, sizeof(dynamicMessage), "Missing %d seconds", counter);
 //	  						updateCharValue(NORDIC_UART_SERVICE_HANDLE, READ_CHAR_HANDLE, 0, strlen(message), (uint8_t*)message);
 
 //	  						  // Send a string to the NORDIC UART service, remember to not include the newline
-	  						  unsigned char test_str[] = "youlostit BLE test";
-	  						  updateCharValue(NORDIC_UART_SERVICE_HANDLE, READ_CHAR_HANDLE, 0, sizeof(test_str)-1, test_str);
+	  						//  unsigned char test_str[] = "youlostit BLE test";
+	  			            updateCharValue(NORDIC_UART_SERVICE_HANDLE, READ_CHAR_HANDLE, 0, strlen(dynamicMessage), (uint8_t*)dynamicMessage);
 	  						  timer_reset(TIM2); // Reset timer
 	  						  stationary_interval_count = 0; // Reset stationary_interval_count
 	  						  leds_set(0b00); // Turn off LEDs
+	  						  counter++;
+
 	  					  	  }
 	  		}
 	  		}
