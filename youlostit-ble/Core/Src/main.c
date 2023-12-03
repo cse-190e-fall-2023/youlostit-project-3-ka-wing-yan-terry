@@ -37,7 +37,7 @@ int dataAvailable = 0;
 // Define maximum number of time intervals since last movement before entering lost state
 // 50 * MAX_COUNT_INTERVAL = 60000 ms 1 min
 // 100 * MAX_COUNT_INTERVAL = 60000 ms 1 min
-#define MAX_COUNT_INTERVAL 400
+#define MAX_COUNT_INTERVAL 2400
 
 // Redefine the libc _write() function so you can use printf in your code
 int _write(int file, char *ptr, int len) {
