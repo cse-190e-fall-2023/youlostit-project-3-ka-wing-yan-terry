@@ -55,7 +55,7 @@ volatile uint32_t ptr2 = 8; // 8 pairs of bits in pid
 volatile int one_min_passed = 0; // Indicate whether 1 min has passed
 volatile uint64_t interval_count = 0; // Count number of intervals. Reset after each message printing
 volatile int loss_time_past = 0; // Time (in sec) since entering loss state
-char message[50]; // Note: Adjust the buffer size as needed
+char message[60]; // Note: Adjust the buffer size as needed
 uint8_t standby = 0;
 volatile int flag_print = 0;
 
@@ -155,7 +155,7 @@ int main(void)
 
   ble_init();
 
-  HAL_Delay(10);
+ // HAL_Delay(10);
 
   while (1)
   {
@@ -172,6 +172,7 @@ int main(void)
 	  	else {
 	  		// When printing flag is set
 	  		while(flag_print == 1) {
+
 	  			// Note: Adjust the buffer size as needed
 	  			snprintf(message, sizeof(message), "Missing %d seconds", loss_time_past);
 	  			updateCharValue(NORDIC_UART_SERVICE_HANDLE, READ_CHAR_HANDLE, 0, strlen(message), (uint8_t*)message);
