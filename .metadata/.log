@@ -1,0 +1,18 @@
+!SESSION 2023-12-02 20:12:51.403 -----------------------------------------------
+eclipse.buildId=Version 1.13.2
+java.version=17.0.6
+java.vendor=Eclipse Adoptium
+BootLoader constants: OS=win32, ARCH=x86_64, WS=win32, NL=en_US
+Command-line arguments:  -os win32 -ws win32 -arch x86_64
+
+!ENTRY com.st.stm32cube.ide.mcu.informationcenter 4 4 2023-12-02 20:13:31.407
+!MESSAGE CubeMX plugin appears to be active, Log4j initialization might be too late.
+
+!ENTRY com.st.stm32cube.ide.mcu.informationcenter 1 1 2023-12-02 20:13:31.485
+!MESSAGE Log4j2 initialized with config file D:\UC San Diego Courses\Fall 2023\CSE 190\Projects\3-main-2\.metadata\.log4j2.xml
+
+!ENTRY com.st.stm32cube.ide.mcu.ide 1 1 2023-12-02 20:13:40.911
+!MESSAGE Started RMI Server, listening on port 41338
+
+!ENTRY org.eclipse.cdt.core 1 0 2023-12-02 20:14:16.991
+!MESSAGE Indexed 'youlostit-ble' (29 sources, 128 headers) in 8.25 sec: 13,495 declarations; 81,390 references; 3 unresolved inclusions; 46 syntax errors; 169 unresolved names (0.18%)

@@ -37,7 +37,7 @@ void timer_init(TIM_TypeDef* timer)
 		NVIC_SetPriority(TIM3_IRQn, 0); // Set priority of the interrupt
 	}
 
-	timer->PSC = 200;// Decrease timer frequency to 4000000 / 200 = 20000 Hz
+	timer->PSC = 200;// Decrease timer frequency to 8000000 / 200 = 40000 Hz
 
 	timer->CR1 |= TIM_CR1_CEN; // Enable timer
 
@@ -50,5 +50,5 @@ void timer_reset(TIM_TypeDef* timer)
 
 void timer_set_ms(TIM_TypeDef* timer, uint16_t period_ms)
 {
-	timer->ARR = 20 * period_ms - 1; // In each cycle, timer counts {ARR} times to reach {peroid_ms} ms
+	timer->ARR = 20 * period_ms - 1; // In each cycle, timer counts {ARR} times to reach {peroid_ms}/2 ms
 }

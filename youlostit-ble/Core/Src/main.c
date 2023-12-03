@@ -34,10 +34,11 @@
 #include "lsm6dsl.h"
 #include "i2c.h"
 int dataAvailable = 0;
-// Define maximum number of time intervals since last movement before entering lost state
-// 50 * MAX_COUNT_INTERVAL = 60000 ms 1 min
-// 100 * MAX_COUNT_INTERVAL = 60000 ms 1 min
-#define MAX_COUNT_INTERVAL 2400
+
+// 25 * INTERVAL_COUNT_ONE_MIN = 60000 ms = 1 min
+#define INTERVAL_COUNT_ONE_MIN 2400
+// 25 * INTERVAL_COUNT_TEN_SEC = 10000 ms = 10 s
+#define INTERVAL_COUNT_TEN_SEC 400
 
 // Redefine the libc _write() function so you can use printf in your code
 int _write(int file, char *ptr, int len) {
@@ -51,7 +52,13 @@ const uint8_t preamble = 0b10011001;  // Preamble
 const uint16_t pid = 0b0001110111111100; // SID: 7676
 volatile uint32_t ptr1 = 4; // 4 pairs of bits in preamble
 volatile uint32_t ptr2 = 8; // 8 pairs of bits in pid
-volatile uint32_t stationary_interval_count = 0; // Count number of time intervals since last movement
+volatile int one_min_passed = 0; // Indicate whether 1 min has passed
+volatile uint64_t interval_count = 0; // Count number of intervals. Reset after each message printing
+volatile int loss_time_past = 0; // Time (in sec) since entering loss state
+char message[50]; // Note: Adjust the buffer size as needed
+uint8_t standby = 0;
+volatile int flag_print = 0;
+
 void DisconnectAndSuspend(void) {
 
 	  HAL_GPIO_WritePin(BLE_RESET_GPIO_Port,BLE_RESET_Pin,GPIO_PIN_RESET);
@@ -62,14 +69,25 @@ void TIM2_IRQHandler(){
 	if((TIM2->SR & TIM_SR_UIF) == 1){
 		timer_reset(TIM2); // Reset the timer's counter
 		TIM2->SR &= !TIM_SR_UIF; // Clear the update event flag
-		/* To avoid overflow, increase stationary_interval_count only when
-		 * it has not reached its maximum
-		 */
-		if(stationary_interval_count < MAX_COUNT_INTERVAL) {
-			stationary_interval_count+=1;
+
+		interval_count+=1;
+
+		/* Set 1-min flag after the first minute */
+		if(one_min_passed == 0 && interval_count == INTERVAL_COUNT_ONE_MIN){
+			one_min_passed = 1;
+			interval_count = 0;
 		}
-		/* If stationary_interval_count reaches its maximum */
-		if(stationary_interval_count == MAX_COUNT_INTERVAL){
+
+		/* When one minute has passed*/
+		if(one_min_passed) {
+			/* When ten seconds have passed */
+			if(interval_count == INTERVAL_COUNT_TEN_SEC) {
+				interval_count = 0;
+				loss_time_past+=10;
+				flag_print = 1; // Signal message printing
+			}
+
+			/* Flash LEDs */
 			if(ptr1 > 0) {
 				ptr1-=1;
 				// Find current pair of bits
@@ -106,7 +124,6 @@ static void MX_SPI3_Init(void);
   * @brief  The application entry point.
   * @retval int
   */
-int c = 0;
 int main(void)
 {
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
@@ -140,49 +157,43 @@ int main(void)
 
   HAL_Delay(10);
 
-  uint8_t standby = 0;
-  char dynamicMessage[50]; // Adjust the buffer size as needed
-  int counter = 0;
   while (1)
   {
 	  lsm6dsl_read_xyz(&acceleration_x, &acceleration_y, &acceleration_z);
 
-	  		int32_t net_acceleration_squared = acceleration_x * acceleration_x
-	  				+ acceleration_y * acceleration_y + acceleration_z * acceleration_z;
-	  		// Stationary
-	  		if(net_acceleration_squared >= 113550336 && net_acceleration_squared <= 489736900) {
-	  			// printf("S\n");
-	  			if(!standby && HAL_GPIO_ReadPin(BLE_INT_GPIO_Port,BLE_INT_Pin)){
-	  				  						catchBLE();
-	  				  					  }else{
-	  				  						  HAL_Delay(1000);
-
-
-	  				  						 // Adjust the buffer size as needed
-	  				  						snprintf(dynamicMessage, sizeof(dynamicMessage), "Missing %d seconds", counter);
-	  				  			            updateCharValue(NORDIC_UART_SERVICE_HANDLE, READ_CHAR_HANDLE, 0, strlen(dynamicMessage), (uint8_t*)dynamicMessage);
-
-
-
-	  				  						  counter++;
-
-	  				  					  	  }
+	  int32_t net_acceleration_squared = acceleration_x * acceleration_x
+	  		+ acceleration_y * acceleration_y + acceleration_z * acceleration_z;
+	  // Stationary
+	  if(net_acceleration_squared >= 113550336 && net_acceleration_squared <= 489736900) {
+	  	// printf("S\n");
+	  	if(!standby && HAL_GPIO_ReadPin(BLE_INT_GPIO_Port,BLE_INT_Pin)){
+	  		catchBLE();
+	  	}
+	  	else {
+	  		// When printing flag is set
+	  		while(flag_print == 1) {
+	  			// Note: Adjust the buffer size as needed
+	  			snprintf(message, sizeof(message), "Missing %d seconds", loss_time_past);
+	  			updateCharValue(NORDIC_UART_SERVICE_HANDLE, READ_CHAR_HANDLE, 0, strlen(message), (uint8_t*)message);
+	  			// Reset printing flag after message printed
+	  			flag_print = 0;
 	  		}
-	  		else{
-	  			// Moving
-	  			timer_reset(TIM2);  // Reset timer
-	  			stationary_interval_count = 0; // Reset stationary_interval_count
-	  			leds_set(0b00); // Turn off LEDs
-	  			DisconnectAndSuspend();
-	  			ble_init();
-	  			counter = 0;
-	  		}
-	  		}
+	  	}
+	  }
+	  else{ // Moving
+	  	/* Reset counters and time status */
+	  	timer_reset(TIM2);
+	  	interval_count = 0;
+	  	one_min_passed = 0;
+	  	loss_time_past = 0;
 
-	  // Wait for interrupt, only uncomment if low power is needed
-	  //__WFI();
-
+	  	leds_set(0b00); // Turn off LEDs
+	  	DisconnectAndSuspend();
+	  	ble_init();
+	  }
   }
+
+}
 
 
 
