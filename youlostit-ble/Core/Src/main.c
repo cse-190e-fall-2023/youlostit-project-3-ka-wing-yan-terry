@@ -35,8 +35,9 @@
 #include "i2c.h"
 int dataAvailable = 0;
 // Define maximum number of time intervals since last movement before entering lost state
-// 50 * MAX_COUNT_INTERVAL = 60000 ms
-#define MAX_COUNT_INTERVAL 200
+// 50 * MAX_COUNT_INTERVAL = 60000 ms 1 min
+// 100 * MAX_COUNT_INTERVAL = 60000 ms 1 min
+#define MAX_COUNT_INTERVAL 2400
 
 // Redefine the libc _write() function so you can use printf in your code
 int _write(int file, char *ptr, int len) {
@@ -51,7 +52,12 @@ const uint16_t pid = 0b0001110111111100; // SID: 7676
 volatile uint32_t ptr1 = 4; // 4 pairs of bits in preamble
 volatile uint32_t ptr2 = 8; // 8 pairs of bits in pid
 volatile uint32_t stationary_interval_count = 0; // Count number of time intervals since last movement
+void DisconnectAndSuspend(void) {
 
+	  HAL_GPIO_WritePin(BLE_RESET_GPIO_Port,BLE_RESET_Pin,GPIO_PIN_RESET);
+	  HAL_Delay(10);
+	  HAL_GPIO_WritePin(BLE_RESET_GPIO_Port,BLE_RESET_Pin,GPIO_PIN_SET);
+}
 void TIM2_IRQHandler(){
 	if((TIM2->SR & TIM_SR_UIF) == 1){
 		timer_reset(TIM2); // Reset the timer's counter
@@ -143,33 +149,33 @@ int main(void)
 
 	  		int32_t net_acceleration_squared = acceleration_x * acceleration_x
 	  				+ acceleration_y * acceleration_y + acceleration_z * acceleration_z;
-	  		//stop
+	  		// Stationary
 	  		if(net_acceleration_squared >= 113550336 && net_acceleration_squared <= 489736900) {
-//	  			HAL_GPIO_WritePin(BLE_RESET_GPIO_Port,BLE_RESET_Pin,GPIO_PIN_RESET);
-//	  					  			HAL_Delay(10);
-//	  					  			HAL_GPIO_WritePin(BLE_RESET_GPIO_Port,BLE_RESET_Pin,GPIO_PIN_SET);
-	  			counter = 0;
+	  			// printf("S\n");
+	  			if(!standby && HAL_GPIO_ReadPin(BLE_INT_GPIO_Port,BLE_INT_Pin)){
+	  				  						catchBLE();
+	  				  					  }else{
+	  				  						  HAL_Delay(1000);
+
+
+	  				  						 // Adjust the buffer size as needed
+	  				  						snprintf(dynamicMessage, sizeof(dynamicMessage), "Missing %d seconds", counter);
+	  				  			            updateCharValue(NORDIC_UART_SERVICE_HANDLE, READ_CHAR_HANDLE, 0, strlen(dynamicMessage), (uint8_t*)dynamicMessage);
+
+
+
+	  				  						  counter++;
+
+	  				  					  	  }
 	  		}
 	  		else{
-	  			if(!standby && HAL_GPIO_ReadPin(BLE_INT_GPIO_Port,BLE_INT_Pin)){
-	  						catchBLE();
-	  					  }else{
-	  						  HAL_Delay(1000);
-
-
-	  						 // Adjust the buffer size as needed
-	  						 snprintf(dynamicMessage, sizeof(dynamicMessage), "Missing %d seconds", counter);
-//	  						updateCharValue(NORDIC_UART_SERVICE_HANDLE, READ_CHAR_HANDLE, 0, strlen(message), (uint8_t*)message);
-
-//	  						  // Send a string to the NORDIC UART service, remember to not include the newline
-	  						//  unsigned char test_str[] = "youlostit BLE test";
-	  			            updateCharValue(NORDIC_UART_SERVICE_HANDLE, READ_CHAR_HANDLE, 0, strlen(dynamicMessage), (uint8_t*)dynamicMessage);
-	  						  timer_reset(TIM2); // Reset timer
-	  						  stationary_interval_count = 0; // Reset stationary_interval_count
-	  						  leds_set(0b00); // Turn off LEDs
-	  						  counter++;
-
-	  					  	  }
+	  			// Moving
+	  			timer_reset(TIM2);  // Reset timer
+	  			stationary_interval_count = 0; // Reset stationary_interval_count
+	  			leds_set(0b00); // Turn off LEDs
+	  			DisconnectAndSuspend();
+	  			ble_init();
+	  			counter = 0;
 	  		}
 	  		}
 
