@@ -79,7 +79,7 @@ void TIM2_IRQHandler(){
 		interval_count+=1;
 
 		/* At end of first minute */
-		if(one_min_passed == 0 && interval_count == INTERVAL_COUNT_ONE_MIN){
+		if(one_min_passed == 0 && interval_count == INTERVAL_COUNT_TEN_SEC){
 			one_min_passed = 1;
 			interval_count = 0;
 			flag_ble_init = 1;
