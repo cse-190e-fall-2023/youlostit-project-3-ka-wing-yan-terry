@@ -175,7 +175,7 @@ int main(void)
 		  HAL_GPIO_WritePin(BLE_RESET_GPIO_Port,BLE_RESET_Pin,GPIO_PIN_SET);
 
 		  ble_init();
-
+		  HAL_Delay(10);
 	  }
 
 	  // Stationary
