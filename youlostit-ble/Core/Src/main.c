@@ -52,18 +52,24 @@ const uint8_t preamble = 0b10011001;  // Preamble
 const uint16_t pid = 0b0001110111111100; // SID: 7676
 volatile uint32_t ptr1 = 4; // 4 pairs of bits in preamble
 volatile uint32_t ptr2 = 8; // 8 pairs of bits in pid
-volatile int one_min_passed = 0; // Indicate whether 1 min has passed
+volatile int one_min_passed = 0; // Indicate whether a minute has passed since last movement
 volatile uint64_t interval_count = 0; // Count number of intervals. Reset after each message printing
-volatile int loss_time_past = 0; // Time (in sec) since entering loss state
+volatile int loss_time_passed = 0; // Time (in sec) since entering loss state
 char message[60]; // Note: Adjust the buffer size as needed
-uint8_t standby = 0;
-volatile int flag_print = 0;
+uint8_t standby = 1; // Standby flag
+volatile int flag_print = 0; // Signal bottom half of handler to print message
+volatile int flag_ble_init = 0; // Signal bottom half of handler to activate BLE device
 
 void DisconnectAndSuspend(void) {
 
+	  // Reset BLE module
 	  HAL_GPIO_WritePin(BLE_RESET_GPIO_Port,BLE_RESET_Pin,GPIO_PIN_RESET);
 	  HAL_Delay(10);
 	  HAL_GPIO_WritePin(BLE_RESET_GPIO_Port,BLE_RESET_Pin,GPIO_PIN_SET);
+
+	  // Enter standby mode
+	  standbyBle();
+	  standby = 1;
 }
 void TIM2_IRQHandler(){
 	if((TIM2->SR & TIM_SR_UIF) == 1){
@@ -72,21 +78,15 @@ void TIM2_IRQHandler(){
 
 		interval_count+=1;
 
-		/* Set 1-min flag after the first minute */
-		if(one_min_passed == 0 && interval_count == INTERVAL_COUNT_ONE_MIN){
+		/* At end of first minute */
+		if(one_min_passed == 0 && interval_count == INTERVAL_COUNT_TEN_SEC){
 			one_min_passed = 1;
 			interval_count = 0;
+			flag_ble_init = 1;
 		}
 
-		/* When one minute has passed*/
+		/* After first minute */
 		if(one_min_passed) {
-			/* When ten seconds have passed */
-			if(interval_count == INTERVAL_COUNT_TEN_SEC) {
-				interval_count = 0;
-				loss_time_past+=10;
-				flag_print = 1; // Signal message printing
-			}
-
 			/* Flash LEDs */
 			if(ptr1 > 0) {
 				ptr1-=1;
@@ -110,6 +110,13 @@ void TIM2_IRQHandler(){
 						ptr2 = 8;
 					}
 				}
+			}
+
+			/* When ten seconds have passed */
+			if(interval_count == INTERVAL_COUNT_TEN_SEC) {
+				interval_count = 0;
+				loss_time_passed+=10;
+				flag_print = 1; // Signal message printing
 			}
 		}
 	}
@@ -148,14 +155,7 @@ int main(void)
   MX_GPIO_Init();
   MX_SPI3_Init();
 
-  //RESET BLE MODULE
-  HAL_GPIO_WritePin(BLE_RESET_GPIO_Port,BLE_RESET_Pin,GPIO_PIN_RESET);
-  HAL_Delay(10);
-  HAL_GPIO_WritePin(BLE_RESET_GPIO_Port,BLE_RESET_Pin,GPIO_PIN_SET);
 
-  ble_init();
-
- // HAL_Delay(10);
 
   while (1)
   {
@@ -163,34 +163,50 @@ int main(void)
 
 	  int32_t net_acceleration_squared = acceleration_x * acceleration_x
 	  		+ acceleration_y * acceleration_y + acceleration_z * acceleration_z;
+
+	  // Activate
+	  if(flag_ble_init) {
+		  flag_ble_init = 0;
+		  standby = 0;
+
+		  //RESET BLE MODULE
+		  HAL_GPIO_WritePin(BLE_RESET_GPIO_Port,BLE_RESET_Pin,GPIO_PIN_RESET);
+		  HAL_Delay(10);
+		  HAL_GPIO_WritePin(BLE_RESET_GPIO_Port,BLE_RESET_Pin,GPIO_PIN_SET);
+
+		  ble_init();
+		  HAL_Delay(10);
+	  }
+
 	  // Stationary
 	  if(net_acceleration_squared >= 113550336 && net_acceleration_squared <= 489736900) {
-	  	// printf("S\n");
-	  	if(!standby && HAL_GPIO_ReadPin(BLE_INT_GPIO_Port,BLE_INT_Pin)){
-	  		catchBLE();
-	  	}
-	  	else {
-	  		// When printing flag is set
-	  		while(flag_print == 1) {
-
-	  			// Note: Adjust the buffer size as needed
-	  			snprintf(message, sizeof(message), "Missing %d seconds", loss_time_past);
-	  			updateCharValue(NORDIC_UART_SERVICE_HANDLE, READ_CHAR_HANDLE, 0, strlen(message), (uint8_t*)message);
-	  			// Reset printing flag after message printed
-	  			flag_print = 0;
-	  		}
-	  	}
+		  // If not in standby mode
+		  if(!standby) {
+			  if(HAL_GPIO_ReadPin(BLE_INT_GPIO_Port,BLE_INT_Pin)){
+				  catchBLE();
+			  }
+			  else {
+				  // When printing flag is set
+				  if(flag_print == 1) {
+					  flag_print = 0;
+					  // Print message. Note: Adjust the buffer size as needed
+					  snprintf(message, sizeof(message), "Missing %d seconds", loss_time_passed);
+					  updateCharValue(NORDIC_UART_SERVICE_HANDLE, READ_CHAR_HANDLE, 0, strlen(message), (uint8_t*)message);
+				  }
+			  }
+		  }
 	  }
 	  else{ // Moving
-	  	/* Reset counters and time status */
+		// Disconnect from BLE and move to standby mode
+		DisconnectAndSuspend();
+
+	  	// Reset counters and time status
 	  	timer_reset(TIM2);
 	  	interval_count = 0;
 	  	one_min_passed = 0;
-	  	loss_time_past = 0;
+	  	loss_time_passed = 0;
 
 	  	leds_set(0b00); // Turn off LEDs
-	  	DisconnectAndSuspend();
-	  	ble_init();
 	  }
   }
 
